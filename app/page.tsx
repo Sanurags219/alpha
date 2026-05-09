@@ -23,7 +23,6 @@ import {
   Type
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import html2canvas from 'html2canvas';
 import { cn } from '@/lib/utils';
 
 type Tool = 'pencil' | 'eraser' | 'rectangle' | 'circle' | 'sticker' | 'eyedropper' | 'text';
@@ -362,23 +361,21 @@ export default function SnapTool() {
   };
 
   const handleSave = async () => {
-    if (!containerRef.current) return;
+    if (!canvasRef.current) return;
     setIsSaving(true);
     try {
-      const canvas = await html2canvas(containerRef.current, {
-        useCORS: true,
-        backgroundColor: '#000000'
-      });
-      const url = canvas.toDataURL('image/png');
+      // Use the direct canvas toDataURL. This avoids 'html2canvas' parsing modern CSS colors (oklab/oklch)
+      // and is more efficient since we've drawn everything to the canvas already.
+      const url = canvasRef.current.toDataURL('image/png');
       const link = document.createElement('a');
       link.download = 'snap-' + Date.now() + '.png';
       link.href = url;
       link.click();
       
-      // Feedback
-      await new Promise(r => setTimeout(r, 1000));
+      // Feedback delay
+      await new Promise(r => setTimeout(r, 600));
     } catch (err) {
-      console.error(err);
+      console.error('Save failed:', err);
     } finally {
       setIsSaving(false);
     }

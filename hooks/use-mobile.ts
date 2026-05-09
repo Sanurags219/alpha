@@ -11,7 +11,11 @@ export function useIsMobile() {
       setIsMobile(mql.matches)
     }
     mql.addEventListener("change", onChange)
-    setIsMobile(mql.matches)
+    // Avoid synchronous setState in effect body to prevent cascading renders
+    const initialMatch = mql.matches
+    if (isMobile !== initialMatch) {
+      setIsMobile(initialMatch)
+    }
     return () => mql.removeEventListener("change", onChange)
   }, [])
 
