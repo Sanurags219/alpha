@@ -55,6 +55,8 @@ export default function SnapTool() {
   const [paths, setPaths] = useState<Path[]>([]);
   const [currentPath, setCurrentPath] = useState<Path | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [selectedSticker, setSelectedSticker] = useState('🚀');
+  const [activeStickerMenu, setActiveStickerMenu] = useState(false);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const [isSaving, setIsSaving] = useState(false);
 
@@ -304,13 +306,12 @@ export default function SnapTool() {
       const stickerPath: Path = {
         tool: 'sticker',
         color,
-        size: 10,
+        size: 12, // Base size for stickers
         lineDash: 'solid',
         roughness: 0,
         points: [pos],
-        sticker: '🚀' // Default or selected sticker
+        sticker: selectedSticker
       };
-      // For now we'll just use a default for the demo
       setPaths([...paths, stickerPath]);
     } else if (currentPath) {
       setPaths([...paths, currentPath]);
@@ -592,11 +593,16 @@ export default function SnapTool() {
                     { id: 'eraser', icon: Eraser },
                     { id: 'rectangle', icon: Square },
                     { id: 'circle', icon: CircleIcon },
+                    { id: 'sticker', icon: Smile },
                     { id: 'eyedropper', icon: Pipette },
                   ].map((t) => (
                     <button
                       key={t.id}
-                      onClick={() => setTool(t.id as Tool)}
+                      onClick={() => {
+                        setTool(t.id as Tool);
+                        if (t.id === 'sticker') setActiveStickerMenu(!activeStickerMenu);
+                        else setActiveStickerMenu(false);
+                      }}
                       className={cn(
                         "p-4 rounded-[24px] transition-all relative overflow-hidden",
                         tool === t.id ? "text-white" : "text-white/40 hover:text-white/60"
@@ -613,7 +619,10 @@ export default function SnapTool() {
                   ))}
                   
                   <button
-                    onClick={() => setShowSettings(!showSettings)}
+                    onClick={() => {
+                      setShowSettings(!showSettings);
+                      setActiveStickerMenu(false);
+                    }}
                     className={cn(
                       "p-4 rounded-[24px] transition-all text-white/40 hover:text-white/60",
                       showSettings && "text-white"
@@ -629,7 +638,10 @@ export default function SnapTool() {
                   {['#FF3B30', '#34C759', '#007AFF', '#FFFFFF'].map(c => (
                     <button
                       key={c}
-                      onClick={() => setColor(c)}
+                      onClick={() => {
+                        setColor(c);
+                        setActiveStickerMenu(false);
+                      }}
                       className={cn(
                         "w-7 h-7 rounded-full border-2 transition-transform active:scale-90",
                         color.toLowerCase() === c.toLowerCase() ? "scale-110 border-white shadow-lg" : "border-transparent opacity-60"
@@ -646,6 +658,36 @@ export default function SnapTool() {
                   )}
                 </div>
               </div>
+
+              {/* Sticker Menu */}
+              <AnimatePresence>
+                {tool === 'sticker' && activeStickerMenu && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                    className="p-4 bg-white/10 backdrop-blur-3xl border border-white/20 rounded-[24px] shadow-2xl mb-4"
+                  >
+                    <div className="flex flex-wrap gap-2 justify-center">
+                      {['🚀', '🔥', '👍', '✨', '💡', '✅', '❌', '❤️', '👀', '📌', '🎨', '📸'].map(s => (
+                        <button
+                          key={s}
+                          onClick={() => {
+                            setSelectedSticker(s);
+                            setActiveStickerMenu(false);
+                          }}
+                          className={cn(
+                            "w-12 h-12 flex items-center justify-center text-2xl rounded-xl transition-all active:scale-90",
+                            selectedSticker === s ? "bg-blue-600 scale-110" : "hover:bg-white/10"
+                          )}
+                        >
+                          {s}
+                        </button>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
               {/* Action Bar */}
               <div className="flex gap-3">
