@@ -16,13 +16,17 @@ import {
   Smile,
   ChevronLeft,
   Info,
-  Maximize2
+  Maximize2,
+  Pipette,
+  Settings2,
+  Check
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import html2canvas from 'html2canvas';
 import { cn } from '@/lib/utils';
 
-type Tool = 'pencil' | 'eraser' | 'rectangle' | 'circle' | 'sticker';
+type Tool = 'pencil' | 'eraser' | 'rectangle' | 'circle' | 'sticker' | 'eyedropper';
+type LineDash = 'solid' | 'dashed' | 'dotted';
 
 interface Point {
   x: number;
@@ -34,6 +38,8 @@ interface Path {
   color: string;
   size: number;
   points: Point[];
+  lineDash: LineDash;
+  roughness: number;
   rect?: { x: number; y: number; w: number; h: number };
   circle?: { x: number; y: number; r: number };
   sticker?: string;
@@ -44,9 +50,11 @@ export default function SnapTool() {
   const [tool, setTool] = useState<Tool>('pencil');
   const [color, setColor] = useState('#FF3B30');
   const [size, setSize] = useState(6);
+  const [lineDash, setLineDash] = useState<LineDash>('solid');
+  const [roughness, setRoughness] = useState(0);
   const [paths, setPaths] = useState<Path[]>([]);
   const [currentPath, setCurrentPath] = useState<Path | null>(null);
-  const [showStickers, setShowStickers] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const [isSaving, setIsSaving] = useState(false);
 
@@ -93,17 +101,83 @@ export default function SnapTool() {
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
+    // Set line dash
+    if (path.lineDash === 'dashed') {
+      ctx.setLineDash([path.size * 2, path.size * 2]);
+    } else if (path.lineDash === 'dotted') {
+      ctx.setLineDash([1, path.size * 2]);
+    } else {
+      ctx.setLineDash([]);
+    }
+
+    const applyRoughness = (val: number) => {
+      return val + (Math.random() - 0.5) * path.roughness * 10;
+    };
+
+    // Set shadow for 'smoothing' effect
+    if (path.roughness < 0.3 && path.tool !== 'eraser' && path.tool !== 'eyedropper') {
+      ctx.shadowBlur = path.size / 2;
+      ctx.shadowColor = path.color;
+    } else {
+      ctx.shadowBlur = 0;
+    }
+
     if (path.tool === 'pencil' || path.tool === 'eraser') {
-      if (path.points.length < 1) return;
+      if (path.points.length < 2) return;
       ctx.beginPath();
-      ctx.moveTo(path.points[0].x, path.points[0].y);
-      path.points.forEach(p => ctx.lineTo(p.x, p.y));
+      
+      if (path.roughness > 0) {
+        ctx.moveTo(applyRoughness(path.points[0].x), applyRoughness(path.points[0].y));
+        path.points.forEach(p => {
+          ctx.lineTo(applyRoughness(p.x), applyRoughness(p.y));
+        });
+      } else {
+        // Smoothing with Quadratic Curves
+        ctx.moveTo(path.points[0].x, path.points[0].y);
+        for (let i = 1; i < path.points.length - 2; i++) {
+          const xc = (path.points[i].x + path.points[i + 1].x) / 2;
+          const yc = (path.points[i].y + path.points[i + 1].y) / 2;
+          ctx.quadraticCurveTo(path.points[i].x, path.points[i].y, xc, yc);
+        }
+        // curve through the last two points
+        if (path.points.length > 2) {
+          ctx.quadraticCurveTo(
+            path.points[path.points.length - 2].x,
+            path.points[path.points.length - 2].y,
+            path.points[path.points.length - 1].x,
+            path.points[path.points.length - 1].y
+          );
+        }
+      }
       ctx.stroke();
     } else if (path.tool === 'rectangle' && path.rect) {
-      ctx.strokeRect(path.rect.x, path.rect.y, path.rect.w, path.rect.h);
+      if (path.roughness > 0) {
+        // Draw sketchy rectangle
+        ctx.beginPath();
+        const { x, y, w, h } = path.rect;
+        ctx.moveTo(applyRoughness(x), applyRoughness(y));
+        ctx.lineTo(applyRoughness(x + w), applyRoughness(y));
+        ctx.lineTo(applyRoughness(x + w), applyRoughness(y + h));
+        ctx.lineTo(applyRoughness(x), applyRoughness(y + h));
+        ctx.closePath();
+        ctx.stroke();
+      } else {
+        ctx.strokeRect(path.rect.x, path.rect.y, path.rect.w, path.rect.h);
+      }
     } else if (path.tool === 'circle' && path.circle) {
       ctx.beginPath();
-      ctx.arc(path.circle.x, path.circle.y, path.circle.r, 0, Math.PI * 2);
+      if (path.roughness > 0) {
+        // Sketchy circle
+        for (let i = 0; i < Math.PI * 2; i += 0.1) {
+          const rx = path.circle.x + Math.cos(i) * path.circle.r;
+          const ry = path.circle.y + Math.sin(i) * path.circle.r;
+          if (i === 0) ctx.moveTo(applyRoughness(rx), applyRoughness(ry));
+          else ctx.lineTo(applyRoughness(rx), applyRoughness(ry));
+        }
+        ctx.closePath();
+      } else {
+        ctx.arc(path.circle.x, path.circle.y, path.circle.r, 0, Math.PI * 2);
+      }
       ctx.stroke();
     } else if (path.tool === 'sticker' && path.sticker) {
       ctx.font = `${path.size * 5}px sans-serif`;
@@ -111,6 +185,9 @@ export default function SnapTool() {
       ctx.textBaseline = 'middle';
       ctx.fillText(path.sticker, path.points[0].x, path.points[0].y);
     }
+    
+    // Reset dash
+    ctx.setLineDash([]);
   }, []);
 
   useEffect(() => {
@@ -163,6 +240,22 @@ export default function SnapTool() {
 
   const startDrawing = (e: React.MouseEvent | React.TouchEvent) => {
     const pos = getPos(e);
+    
+    if (tool === 'eyedropper') {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      
+      // We need to account for DPR when picking pixels
+      const dpr = window.devicePixelRatio || 1;
+      const pixel = ctx.getImageData(pos.x * dpr, pos.y * dpr, 1, 1).data;
+      const hex = `#${((1 << 24) + (pixel[0] << 16) + (pixel[1] << 8) + pixel[2]).toString(16).slice(1)}`;
+      setColor(hex.toUpperCase());
+      setTool('pencil');
+      return;
+    }
+
     if (tool === 'sticker') {
       // Stickers are one-click
       return;
@@ -171,6 +264,8 @@ export default function SnapTool() {
       tool,
       color,
       size,
+      lineDash,
+      roughness,
       points: [pos],
       rect: tool === 'rectangle' ? { ...pos, w: 0, h: 0 } : undefined,
       circle: tool === 'circle' ? { ...pos, r: 0 } : undefined
@@ -210,10 +305,12 @@ export default function SnapTool() {
         tool: 'sticker',
         color,
         size: 10,
+        lineDash: 'solid',
+        roughness: 0,
         points: [pos],
         sticker: '🚀' // Default or selected sticker
       };
-      // For now we'll just open a menu or something, but let's just use a default for the demo
+      // For now we'll just use a default for the demo
       setPaths([...paths, stickerPath]);
     } else if (currentPath) {
       setPaths([...paths, currentPath]);
@@ -365,7 +462,11 @@ export default function SnapTool() {
                     onClick={() => setImage(`https://picsum.photos/seed/${i + 10}/800/800`)}
                     className="aspect-square bg-white/5 rounded-2xl border border-white/10 overflow-hidden group relative"
                   >
-                    <img src={`https://picsum.photos/seed/${i + 10}/200/200`} className="w-full h-full object-cover opacity-40 group-hover:opacity-100 transition-opacity" />
+                    <img 
+                      src={`https://picsum.photos/seed/${i + 10}/200/200`} 
+                      alt={`Sample ${i}`}
+                      className="w-full h-full object-cover opacity-40 group-hover:opacity-100 transition-opacity" 
+                    />
                     <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold uppercase tracking-widest bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity">Try Sample</span>
                   </button>
                 ))}
@@ -416,7 +517,73 @@ export default function SnapTool() {
             exit={{ y: 200 }}
             className="relative z-20 pb-8 px-6"
           >
-            <div className="max-w-md mx-auto space-y-6">
+            <div className="max-w-md mx-auto space-y-4">
+              {/* Settings Panel */}
+              <AnimatePresence>
+                {showSettings && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                    className="p-6 bg-white/10 backdrop-blur-3xl border border-white/20 rounded-[32px] shadow-2xl mb-4"
+                  >
+                    <div className="space-y-6">
+                      <div className="flex items-center justify-between">
+                        <h3 className="font-bold text-sm uppercase tracking-wider text-white/40">Brush Settings</h3>
+                        <button onClick={() => setShowSettings(false)} className="p-2 hover:bg-white/10 rounded-full">
+                          <Check className="w-4 h-4 text-green-400" />
+                        </button>
+                      </div>
+
+                      {/* Line Width */}
+                      <div>
+                        <div className="flex justify-between text-xs font-semibold mb-3">
+                          <span>Width</span>
+                          <span className="text-white/60">{size}px</span>
+                        </div>
+                        <input 
+                          type="range" min="1" max="50" value={size} 
+                          onChange={(e) => setSize(Number(e.target.value))}
+                          className="w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                        />
+                      </div>
+
+                      {/* Line Dash */}
+                      <div>
+                        <div className="text-xs font-semibold mb-3 uppercase tracking-tighter text-white/40">Style</div>
+                        <div className="flex gap-2">
+                          {(['solid', 'dashed', 'dotted'] as LineDash[]).map(s => (
+                            <button
+                              key={s}
+                              onClick={() => setLineDash(s)}
+                              className={cn(
+                                "flex-1 py-2 rounded-xl text-[10px] font-bold uppercase transition-all border",
+                                lineDash === s ? "bg-white text-black border-white" : "bg-white/5 text-white/40 border-white/10 hover:border-white/20"
+                              )}
+                            >
+                              {s}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Roughness */}
+                      <div>
+                        <div className="flex justify-between text-xs font-semibold mb-3">
+                          <span>Roughness</span>
+                          <span className="text-white/60">{Math.round(roughness * 100)}%</span>
+                        </div>
+                        <input 
+                          type="range" min="0" max="1" step="0.1" value={roughness} 
+                          onChange={(e) => setRoughness(Number(e.target.value))}
+                          className="w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                        />
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
               {/* Tool Selection */}
               <div className="flex items-center justify-between bg-white/5 backdrop-blur-2xl border border-white/10 rounded-[32px] p-2 pr-6">
                 <div className="flex gap-1">
@@ -425,6 +592,7 @@ export default function SnapTool() {
                     { id: 'eraser', icon: Eraser },
                     { id: 'rectangle', icon: Square },
                     { id: 'circle', icon: CircleIcon },
+                    { id: 'eyedropper', icon: Pipette },
                   ].map((t) => (
                     <button
                       key={t.id}
@@ -443,6 +611,16 @@ export default function SnapTool() {
                       <t.icon className="w-5 h-5 relative z-10" />
                     </button>
                   ))}
+                  
+                  <button
+                    onClick={() => setShowSettings(!showSettings)}
+                    className={cn(
+                      "p-4 rounded-[24px] transition-all text-white/40 hover:text-white/60",
+                      showSettings && "text-white"
+                    )}
+                  >
+                    <Settings2 className="w-5 h-5" />
+                  </button>
                 </div>
 
                 <div className="h-8 w-px bg-white/10 mx-2" />
@@ -454,11 +632,18 @@ export default function SnapTool() {
                       onClick={() => setColor(c)}
                       className={cn(
                         "w-7 h-7 rounded-full border-2 transition-transform active:scale-90",
-                        color === c ? "scale-110 border-white shadow-lg" : "border-transparent opacity-60"
+                        color.toLowerCase() === c.toLowerCase() ? "scale-110 border-white shadow-lg" : "border-transparent opacity-60"
                       )}
                       style={{ backgroundColor: c }}
                     />
                   ))}
+                  {/* Custom picked color if not in presets */}
+                  {!['#FF3B30', '#34C759', '#007AFF', '#FFFFFF'].includes(color.toUpperCase()) && (
+                    <button
+                      className="w-7 h-7 rounded-full border-2 border-white scale-110 shadow-lg"
+                      style={{ backgroundColor: color }}
+                    />
+                  )}
                 </div>
               </div>
 
