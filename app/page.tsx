@@ -19,13 +19,14 @@ import {
   Maximize2,
   Pipette,
   Settings2,
-  Check
+  Check,
+  Type
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import html2canvas from 'html2canvas';
 import { cn } from '@/lib/utils';
 
-type Tool = 'pencil' | 'eraser' | 'rectangle' | 'circle' | 'sticker' | 'eyedropper';
+type Tool = 'pencil' | 'eraser' | 'rectangle' | 'circle' | 'sticker' | 'eyedropper' | 'text';
 type LineDash = 'solid' | 'dashed' | 'dotted';
 
 interface Point {
@@ -43,6 +44,7 @@ interface Path {
   rect?: { x: number; y: number; w: number; h: number };
   circle?: { x: number; y: number; r: number };
   sticker?: string;
+  text?: string;
 }
 
 export default function SnapTool() {
@@ -186,6 +188,11 @@ export default function SnapTool() {
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(path.sticker, path.points[0].x, path.points[0].y);
+    } else if (path.tool === 'text' && path.text) {
+      ctx.font = `bold ${path.size * 3}px sans-serif`;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillText(path.text, path.points[0].x, path.points[0].y);
     }
     
     // Reset dash
@@ -262,6 +269,25 @@ export default function SnapTool() {
       // Stickers are one-click
       return;
     }
+
+    if (tool === 'text') {
+      // Text is one-click but we'll show a prompt
+      const content = window.prompt('Enter your text:');
+      if (content) {
+        const textPath: Path = {
+          tool: 'text',
+          color,
+          size,
+          lineDash,
+          roughness,
+          points: [pos],
+          text: content
+        };
+        setPaths([...paths, textPath]);
+      }
+      return;
+    }
+
     setCurrentPath({
       tool,
       color,
@@ -593,6 +619,7 @@ export default function SnapTool() {
                     { id: 'eraser', icon: Eraser },
                     { id: 'rectangle', icon: Square },
                     { id: 'circle', icon: CircleIcon },
+                    { id: 'text', icon: Type },
                     { id: 'sticker', icon: Smile },
                     { id: 'eyedropper', icon: Pipette },
                   ].map((t) => (
